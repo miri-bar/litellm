@@ -91,6 +91,7 @@ from .llms import (
     replicate,
     vllm,
 )
+from .llms.ai21.chat import AI21ChatCompletion
 from .llms.anthropic.chat import AnthropicChatCompletion
 from .llms.anthropic.completion import AnthropicTextCompletion
 from .llms.azure import AzureChatCompletion, _check_dynamic_azure_params
@@ -185,6 +186,7 @@ vertex_partner_models_chat_completion = VertexAIPartnerModels()
 vertex_text_to_speech = VertexTextToSpeechAPI()
 watsonxai = IBMWatsonXAI()
 sagemaker_llm = SagemakerLLM()
+ai21_chat_completions = AI21ChatCompletion()
 ####### COMPLETION ENDPOINTS ################
 
 
@@ -2213,7 +2215,6 @@ def completion(
                 return _model_response
             response = _model_response
         elif custom_llm_provider == "text-completion-codestral":
-
             api_base = (
                 api_base
                 or optional_params.pop("api_base", None)
@@ -2268,19 +2269,38 @@ def completion(
                 or "https://api.ai21.com/studio/v1/"
             )
 
-            model_response = ai21.completion(
-                model=model,
-                messages=messages,
-                api_base=api_base,
-                model_response=model_response,
-                print_verbose=print_verbose,
-                optional_params=optional_params,
-                litellm_params=litellm_params,
-                logger_fn=logger_fn,
-                encoding=encoding,
-                api_key=ai21_key,
-                logging_obj=logging,
-            )
+            if model == "j2-ultra" or model == "j2-mid":
+                if api_base is not None and not api_base.endswith("/v1/complete"):
+                    api_base += "/v1/complete"
+
+                model_response = ai21.completion(
+                    model=model,
+                    messages=messages,
+                    api_base=api_base,
+                    model_response=model_response,
+                    print_verbose=print_verbose,
+                    optional_params=optional_params,
+                    litellm_params=litellm_params,
+                    logger_fn=logger_fn,
+                    encoding=encoding,
+                    api_key=ai21_key,
+                    logging_obj=logging,
+                )
+            else:
+                # CHAT COMPLETION
+                model_response = ai21_chat_completions.completion(
+                    model=model,
+                    messages=messages,
+                    api_base=api_base,
+                    model_response=model_response,
+                    print_verbose=print_verbose,
+                    optional_params=optional_params,
+                    litellm_params=litellm_params,
+                    logger_fn=logger_fn,
+                    encoding=encoding,
+                    api_key=ai21_key,
+                    logging_obj=logging,
+                )
 
             if "stream" in optional_params and optional_params["stream"] == True:
                 # don't try to access stream object,
@@ -2348,9 +2368,9 @@ def completion(
                     "aws_region_name" not in optional_params
                     or optional_params["aws_region_name"] is None
                 ):
-                    optional_params["aws_region_name"] = (
-                        aws_bedrock_client.meta.region_name
-                    )
+                    optional_params[
+                        "aws_region_name"
+                    ] = aws_bedrock_client.meta.region_name
 
             if model in litellm.BEDROCK_CONVERSE_MODELS:
                 response = bedrock_converse_chat_completion.completion(
@@ -3559,7 +3579,6 @@ def embedding(
                 aembedding=aembedding,
             )
         elif custom_llm_provider == "gemini":
-
             gemini_api_key = api_key or get_secret("GEMINI_API_KEY") or litellm.api_key
 
             response = google_batch_embeddings.batch_embeddings(  # type: ignore
@@ -4206,9 +4225,9 @@ def adapter_completion(
     new_kwargs = translation_obj.translate_completion_input_params(kwargs=kwargs)
 
     response: Union[ModelResponse, CustomStreamWrapper] = completion(**new_kwargs)  # type: ignore
-    translated_response: Optional[Union[BaseModel, AdapterCompletionStreamWrapper]] = (
-        None
-    )
+    translated_response: Optional[
+        Union[BaseModel, AdapterCompletionStreamWrapper]
+    ] = None
     if isinstance(response, ModelResponse):
         translated_response = translation_obj.translate_completion_output_params(
             response=response
@@ -4254,7 +4273,6 @@ async def amoderation(
     )
     openai_client = kwargs.get("client", None)
     if openai_client is None:
-
         # call helper to get OpenAI client
         # _get_openai_client maintains in-memory caching logic for OpenAI clients
         openai_client = openai_chat_completions._get_openai_client(
@@ -4814,7 +4832,6 @@ def speech(
     aspeech: Optional[bool] = None,
     **kwargs,
 ) -> HttpxBinaryResponseContent:
-
     model, custom_llm_provider, dynamic_api_key, api_base = get_llm_provider(model=model, custom_llm_provider=custom_llm_provider, api_base=api_base)  # type: ignore
     tags = kwargs.pop("tags", [])
 
@@ -4998,7 +5015,6 @@ async def ahealth_check(
     """
     passed_in_mode: Optional[str] = None
     try:
-
         model: Optional[str] = model_params.get("model", None)
 
         if model is None:
